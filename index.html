@@ -1,0 +1,1468 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CondoMaster - Sistema Integrado de Gestão Multi-Condomínio</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome 6 Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Alpine.js v3 CDN -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        [x-cloak] { display: none !important; }
+        
+        /* Custom scrollbar styling */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+        }
+
+        @media print {
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased font-sans" x-data="condoApp()" x-init="initApp()">
+
+    <!-- APPLICATION SHELL -->
+    <div class="flex h-screen overflow-hidden">
+        
+        <!-- SIDEBAR NAVIGATION -->
+        <aside :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'" 
+               class="fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 text-white transition-transform duration-300 ease-in-out md:static md:translate-x-0 flex flex-col justify-between shadow-2xl shrink-0 no-print">
+            <div>
+                <!-- Brand / Logo Header -->
+                <div class="flex items-center justify-between px-6 py-5 border-b border-slate-800">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-indigo-500/30">
+                            <i class="fa-solid fa-building"></i>
+                        </div>
+                        <div>
+                            <h1 class="font-bold text-lg leading-tight tracking-wide text-white">CondoMaster</h1>
+                            <p class="text-[11px] text-slate-400 font-medium">Gestão Multi-Condomínio</p>
+                        </div>
+                    </div>
+                    <button @click="sidebarOpen = false" class="md:hidden text-slate-400 hover:text-white">
+                        <i class="fa-solid fa-xmark text-xl"></i>
+                    </button>
+                </div>
+
+                <!-- Active Condominium Switcher -->
+                <div class="px-4 py-3 border-b border-slate-800/80 bg-slate-950/40">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 block">Condomínio Ativo</label>
+                    <div class="relative">
+                        <select x-model="selectedCondoId" @change="switchCondo($event.target.value)"
+                                class="w-full bg-slate-800 text-white font-semibold text-xs rounded-xl px-3 py-2 border border-slate-700/80 focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none cursor-pointer">
+                            <option value="all">🌐 Visão Global (Todos)</option>
+                            <template x-for="condo in condominiums" :key="condo.id">
+                                <option :value="condo.id" x-text="condo.name"></option>
+                            </template>
+                        </select>
+                        <i class="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none"></i>
+                    </div>
+                </div>
+
+                <!-- Navigation Items -->
+                <nav class="mt-4 px-3 space-y-1">
+                    <template x-for="item in navItems" :key="item.id">
+                        <button @click="switchView(item.id)"
+                            :class="currentView === item.id ? 'bg-indigo-600 text-white font-semibold shadow-lg shadow-indigo-600/30' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'"
+                            class="w-full flex items-center justify-between px-4 py-2.5 rounded-xl transition duration-150 text-sm">
+                            <div class="flex items-center space-x-3">
+                                <i :class="item.icon" class="w-5 text-center text-base"></i>
+                                <span x-text="item.label"></span>
+                            </div>
+                            <template x-if="item.badge && getBadgeCount(item.id) > 0">
+                                <span class="px-2 py-0.5 text-xs font-bold rounded-full bg-rose-500 text-white"
+                                      x-text="getBadgeCount(item.id)"></span>
+                            </template>
+                        </button>
+                    </template>
+                </nav>
+            </div>
+
+            <!-- Sidebar Footer Controls -->
+            <div class="p-4 border-t border-slate-800 space-y-2">
+                <button @click="openModal('condo')" class="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700/70 transition flex items-center justify-center space-x-2">
+                    <i class="fa-solid fa-plus-circle text-indigo-400"></i>
+                    <span>Cadastrar Novo Condomínio</span>
+                </button>
+                <div class="bg-slate-800/80 rounded-xl p-3 flex items-center space-x-3 border border-slate-700/50">
+                    <div class="w-9 h-9 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-sm">
+                        <i class="fa-solid fa-building-user"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-bold text-white truncate" x-text="getActiveCondoName()"></p>
+                        <p class="text-[10px] text-slate-400 truncate" x-text="condominiums.length + ' Condomínio(s) Activos'"></p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT AREA -->
+        <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
+            
+            <!-- Top Header Bar -->
+            <header class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10 no-print">
+                <div class="flex items-center space-x-4">
+                    <button @click="sidebarOpen = !sidebarOpen" class="md:hidden text-slate-600 hover:text-slate-900 focus:outline-none">
+                        <i class="fa-solid fa-bars text-xl"></i>
+                    </button>
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-800" x-text="getViewTitle()"></h2>
+                        <p class="text-xs text-indigo-600 font-semibold flex items-center gap-1 mt-0.5">
+                            <i class="fa-solid fa-location-dot text-[10px]"></i>
+                            <span x-text="'A visualizar: ' + getActiveCondoName()"></span>
+                        </p>
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-3">
+                    <!-- Global Search -->
+                    <div class="relative hidden sm:block w-56">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                        <input type="text" x-model="globalSearch" placeholder="Pesquisar..." 
+                               class="w-full pl-9 pr-4 py-2 bg-slate-100 text-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 border border-transparent focus:border-indigo-500 transition">
+                    </div>
+
+                    <!-- Backup / Restore System State -->
+                    <button @click="exportData()" title="Exportar Cópia de Segurança (JSON)" class="p-2 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-xl transition">
+                        <i class="fa-solid fa-download"></i>
+                    </button>
+                    <label title="Importar Cópia de Segurança" class="p-2 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-xl transition cursor-pointer">
+                        <i class="fa-solid fa-upload"></i>
+                        <input type="file" @change="importData($event)" class="hidden" accept=".json">
+                    </label>
+
+                    <!-- Reset Demo Data -->
+                    <button @click="resetData()" title="Restaurar Dados Demonstrativos" class="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition">
+                        <i class="fa-solid fa-rotate-right"></i>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Dynamic Body Container -->
+            <main class="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50">
+                
+                <!-- Toast Notification Banner -->
+                <div x-show="toast.show" x-cloak x-transition:enter="transition ease-out duration-300 transform"
+                     x-transition:enter-start="opacity-0 translate-y-2"
+                     x-transition:enter-end="opacity-100 translate-y-0"
+                     x-transition:leave="transition ease-in duration-200 transform"
+                     x-transition:leave-start="opacity-100 translate-y-0"
+                     x-transition:leave-end="opacity-0 translate-y-2"
+                     class="fixed bottom-5 right-5 z-50 flex items-center p-4 text-slate-800 bg-white rounded-2xl shadow-2xl border border-slate-100 space-x-3">
+                    <div :class="toast.type === 'success' ? 'bg-emerald-100 text-emerald-600' : (toast.type === 'error' ? 'bg-rose-100 text-rose-600' : 'bg-blue-100 text-blue-600')" class="p-2 rounded-xl">
+                        <i :class="toast.type === 'success' ? 'fa-check' : (toast.type === 'error' ? 'fa-circle-xmark' : 'fa-circle-info')" class="fa-solid"></i>
+                    </div>
+                    <div class="text-sm font-semibold" x-text="toast.message"></div>
+                </div>
+
+                <!-- MODULE: CONDOMINIUMS MANAGEMENT -->
+                <div x-show="currentView === 'condos'" class="space-y-6" x-cloak>
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h3 class="font-bold text-slate-800 text-lg">Portfolio de Condomínio</h3>
+                            <p class="text-xs text-slate-500">Administre múltiplos edifícios, edifícios residenciais e vilas sob gestão</p>
+                        </div>
+                        <button @click="openModal('condo')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl transition flex items-center space-x-2 shadow-sm">
+                            <i class="fa-solid fa-plus"></i> <span>Novo Condomínio</span>
+                        </button>
+                    </div>
+
+                    <!-- Condominiums Cards Grid -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <template x-for="c in condominiums" :key="c.id">
+                            <div :class="selectedCondoId == c.id ? 'ring-2 ring-indigo-600 border-transparent' : 'border-slate-200/80'" 
+                                 class="bg-white p-6 rounded-2xl border shadow-sm flex flex-col justify-between hover:shadow-md transition">
+                                <div>
+                                    <div class="flex justify-between items-start mb-3">
+                                        <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                                            <i class="fa-solid fa-building"></i>
+                                        </div>
+                                        <span class="px-2.5 py-1 bg-slate-100 rounded-lg text-xs font-bold text-slate-600" x-text="c.units + ' Frações'"></span>
+                                    </div>
+                                    <h4 class="font-extrabold text-slate-800 text-lg" x-text="c.name"></h4>
+                                    <p class="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                                        <i class="fa-solid fa-location-dot text-slate-400"></i>
+                                        <span x-text="c.address"></span>
+                                    </p>
+                                    <div class="mt-4 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs">
+                                        <div>
+                                            <span class="text-slate-400 block text-[10px]">Taxa Mensal Padrão</span>
+                                            <strong class="text-slate-700" x-text="formatCurrency(c.fee)"></strong>
+                                        </div>
+                                        <div>
+                                            <span class="text-slate-400 block text-[10px]">Moradores Registados</span>
+                                            <strong class="text-slate-700" x-text="getCondoResidentsCount(c.id) + ' Residentes'"></strong>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mt-6 pt-4 border-t border-slate-100 flex gap-2">
+                                    <button @click="switchCondo(c.id); switchView('dashboard')" 
+                                            class="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2">
+                                        <i class="fa-solid fa-right-to-bracket"></i>
+                                        <span>Entrar e Gerir</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- MODULE 1: DASHBOARD -->
+                <div x-show="currentView === 'dashboard'" class="space-y-6">
+                    
+                    <!-- Global View Info Banner -->
+                    <div x-show="selectedCondoId === 'all'" class="bg-gradient-to-r from-slate-900 to-indigo-950 text-white p-4 rounded-2xl shadow-sm flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center font-bold">
+                                <i class="fa-solid fa-globe"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-sm">Visão Consolidada de Portfolio</h4>
+                                <p class="text-xs text-slate-300">Os dados e indicadores abaixo refletem a soma total de <strong class="text-indigo-400" x-text="condominiums.length"></strong> condomínios sob gestão.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Metrics Grid -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <!-- Total Residents -->
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Residentes</span>
+                                <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                                    <i class="fa-solid fa-users text-lg"></i>
+                                </div>
+                            </div>
+                            <div class="mt-4 flex items-baseline justify-between">
+                                <span class="text-2xl font-extrabold text-slate-800" x-text="scopedResidents.length"></span>
+                                <span class="text-xs text-emerald-600 font-medium"><i class="fa-solid fa-arrow-up"></i> Ativos</span>
+                            </div>
+                        </div>
+
+                        <!-- Revenue -->
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Receita Arrecadada</span>
+                                <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                                    <i class="fa-solid fa-money-bill-wave text-lg"></i>
+                                </div>
+                            </div>
+                            <div class="mt-4 flex items-baseline justify-between">
+                                <span class="text-2xl font-extrabold text-slate-800" x-text="formatCurrency(calculateMonthlyRevenue())"></span>
+                                <span class="text-xs text-emerald-600 font-semibold">Este Mês</span>
+                            </div>
+                        </div>
+
+                        <!-- Open Tickets -->
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Ocorrências Abertas</span>
+                                <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                                    <i class="fa-solid fa-triangle-exclamation text-lg"></i>
+                                </div>
+                            </div>
+                            <div class="mt-4 flex items-baseline justify-between">
+                                <span class="text-2xl font-extrabold text-slate-800" x-text="getOpenTicketsCount()"></span>
+                                <span class="text-xs text-amber-600 font-semibold">Pendentes</span>
+                            </div>
+                        </div>
+
+                        <!-- Active Bookings -->
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Reservas Ativas</span>
+                                <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                                    <i class="fa-regular fa-calendar-check text-lg"></i>
+                                </div>
+                            </div>
+                            <div class="mt-4 flex items-baseline justify-between">
+                                <span class="text-2xl font-extrabold text-slate-800" x-text="getActiveBookingsCount()"></span>
+                                <span class="text-xs text-indigo-600 font-semibold">Confirmadas</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Actions Toolbar -->
+                    <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-wrap gap-3 items-center justify-between">
+                        <span class="text-xs font-bold uppercase text-slate-400 tracking-wider w-full md:w-auto">Ações Rápidas:</span>
+                        <div class="flex flex-wrap gap-2 w-full md:w-auto">
+                            <button @click="openModal('payment')" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center space-x-2 transition shadow-sm">
+                                <i class="fa-solid fa-plus"></i> <span>Registar Pagamento</span>
+                            </button>
+                            <button @click="openModal('ticket')" class="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold flex items-center space-x-2 transition shadow-sm">
+                                <i class="fa-solid fa-bullhorn"></i> <span>Nova Ocorrência</span>
+                            </button>
+                            <button @click="openModal('booking')" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center space-x-2 transition shadow-sm">
+                                <i class="fa-solid fa-calendar-plus"></i> <span>Reservar Espaço</span>
+                            </button>
+                            <button @click="openModal('resident')" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center space-x-2 transition shadow-sm">
+                                <i class="fa-solid fa-user-plus"></i> <span>Novo Morador</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Chart & Activity Section -->
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <!-- Chart Card -->
+                        <div class="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
+                            <div class="flex items-center justify-between mb-4">
+                                <div>
+                                    <h3 class="font-bold text-slate-800 text-base">Balanço Financeiro Anual</h3>
+                                    <p class="text-xs text-slate-400">Comparativo mensal de Arrecadações vs. Despesas</p>
+                                </div>
+                                <span class="px-2.5 py-1 bg-slate-100 rounded-lg text-xs font-bold text-slate-600">MT (Meticais)</span>
+                            </div>
+                            <div class="h-64 relative">
+                                <canvas id="financialChart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Activity Log -->
+                        <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
+                            <div>
+                                <h3 class="font-bold text-slate-800 text-base mb-4">Atividades Recentes</h3>
+                                <div class="space-y-4 max-h-72 overflow-y-auto pr-1">
+                                    <template x-for="activity in recentActivities" :key="activity.id">
+                                        <div class="flex items-start space-x-3 text-xs border-b border-slate-100 pb-3">
+                                            <div :class="activity.typeColor" class="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
+                                                <i :class="activity.icon"></i>
+                                            </div>
+                                            <div class="flex-1 min-w-0">
+                                                <p class="font-semibold text-slate-800 truncate" x-text="activity.title"></p>
+                                                <p class="text-slate-500 truncate" x-text="activity.desc"></p>
+                                                <span class="text-[10px] text-slate-400 mt-1 block" x-text="activity.time"></span>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MODULE 2: RESIDENTS & UNITS -->
+                <div x-show="currentView === 'residents'" class="space-y-6" x-cloak>
+                    <!-- Search & Controls -->
+                    <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row gap-4 justify-between items-center">
+                        <div class="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                            <div class="relative w-full sm:w-64">
+                                <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                                <input type="text" x-model="residentSearch" placeholder="Nome ou Unidade..." 
+                                       class="w-full pl-8 pr-4 py-2 bg-slate-100 rounded-xl text-sm border-0 focus:ring-2 focus:ring-indigo-500">
+                            </div>
+                            
+                            <select x-model="residentFilterStatus" class="px-3 py-2 bg-slate-100 rounded-xl text-sm border-0 focus:ring-2 focus:ring-indigo-500 text-slate-600">
+                                <option value="all">Todos os Estados</option>
+                                <option value="Em Dia">Em Dia</option>
+                                <option value="Em Atraso">Em Atraso</option>
+                            </select>
+                        </div>
+
+                        <button @click="openModal('resident')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl transition flex items-center space-x-2 w-full sm:w-auto justify-center shadow-sm">
+                            <i class="fa-solid fa-plus"></i> <span>Registar Morador</span>
+                        </button>
+                    </div>
+
+                    <!-- Residents Table -->
+                    <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[11px] font-bold tracking-wider">
+                                    <tr>
+                                        <th class="px-6 py-4" x-show="selectedCondoId === 'all'">Condomínio</th>
+                                        <th class="px-6 py-4">Unidade</th>
+                                        <th class="px-6 py-4">Residente</th>
+                                        <th class="px-6 py-4">Contacto</th>
+                                        <th class="px-6 py-4">Tipo de Vínculo</th>
+                                        <th class="px-6 py-4">Estado Financeiro</th>
+                                        <th class="px-6 py-4 text-right">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    <template x-for="res in filteredResidents" :key="res.id">
+                                        <tr class="hover:bg-slate-50 transition">
+                                            <td class="px-6 py-4 font-semibold text-indigo-600 text-xs" x-show="selectedCondoId === 'all'" x-text="getCondoNameById(res.condoId)"></td>
+                                            <td class="px-6 py-4 font-bold text-slate-800" x-text="res.unit"></td>
+                                            <td class="px-6 py-4">
+                                                <div class="font-medium text-slate-900" x-text="res.name"></div>
+                                                <div class="text-xs text-slate-400" x-text="res.email"></div>
+                                            </td>
+                                            <td class="px-6 py-4 text-slate-600" x-text="res.phone"></td>
+                                            <td class="px-6 py-4">
+                                                <span :class="res.type === 'Proprietário' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-amber-50 text-amber-700 border-amber-200'"
+                                                      class="px-2.5 py-1 rounded-lg text-xs font-semibold border" x-text="res.type"></span>
+                                            </td>
+                                            <td class="px-6 py-4">
+                                                <span :class="res.paymentStatus === 'Em Dia' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'"
+                                                      class="px-2.5 py-1 rounded-full text-xs font-semibold inline-flex items-center space-x-1.5">
+                                                    <span :class="res.paymentStatus === 'Em Dia' ? 'bg-emerald-500' : 'bg-rose-500'" class="w-1.5 h-1.5 rounded-full"></span>
+                                                    <span x-text="res.paymentStatus"></span>
+                                                </span>
+                                            </td>
+                                            <td class="px-6 py-4 text-right space-x-2">
+                                                <button @click="deleteResident(res.id)" class="p-1.5 text-slate-400 hover:text-rose-600 transition rounded-lg hover:bg-rose-50">
+                                                    <i class="fa-regular fa-trash-can"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MODULE 3: FINANCIAL MANAGEMENT -->
+                <div x-show="currentView === 'finance'" class="space-y-6" x-cloak>
+                    <!-- Accounting Cards -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="bg-gradient-to-br from-emerald-500 to-teal-600 text-white p-5 rounded-2xl shadow-md">
+                            <p class="text-xs font-semibold uppercase tracking-wider text-emerald-100">Total Arrecadado (Este Mês)</p>
+                            <h3 class="text-2xl font-extrabold mt-2" x-text="formatCurrency(calculateTotalPaid())"></h3>
+                        </div>
+                        <div class="bg-gradient-to-br from-rose-500 to-red-600 text-white p-5 rounded-2xl shadow-md">
+                            <p class="text-xs font-semibold uppercase tracking-wider text-rose-100">Estimativa em Dívida</p>
+                            <h3 class="text-2xl font-extrabold mt-2" x-text="formatCurrency(calculateTotalPending())"></h3>
+                        </div>
+                        <div class="bg-slate-900 text-white p-5 rounded-2xl shadow-md">
+                            <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Taxa Mensal Vigente</p>
+                            <h3 class="text-2xl font-extrabold mt-2" x-text="formatCurrency(getActiveCondoFee())"></h3>
+                        </div>
+                    </div>
+
+                    <!-- Financial Transactions Table -->
+                    <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                        <div class="p-4 border-b border-slate-100 flex justify-between items-center">
+                            <h3 class="font-bold text-slate-800 text-base">Histórico de Mensalidades & Recibos</h3>
+                            <button @click="openModal('payment')" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-xl transition flex items-center space-x-2">
+                                <i class="fa-solid fa-plus"></i> <span>Registar Pagamento</span>
+                            </button>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[11px] font-bold tracking-wider">
+                                    <tr>
+                                        <th class="px-6 py-4" x-show="selectedCondoId === 'all'">Condomínio</th>
+                                        <th class="px-6 py-4">Unidade & Morador</th>
+                                        <th class="px-6 py-4">Mês de Referência</th>
+                                        <th class="px-6 py-4">Valor Pago</th>
+                                        <th class="px-6 py-4">Método de Pagamento</th>
+                                        <th class="px-6 py-4">Data do Registo</th>
+                                        <th class="px-6 py-4 text-right">Ação / Recibo</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    <template x-for="pay in scopedPayments" :key="pay.id">
+                                        <tr class="hover:bg-slate-50 transition">
+                                            <td class="px-6 py-4 font-semibold text-indigo-600 text-xs" x-show="selectedCondoId === 'all'" x-text="getCondoNameById(pay.condoId)"></td>
+                                            <td class="px-6 py-4">
+                                                <div class="font-bold text-slate-800" x-text="pay.unit"></div>
+                                                <div class="text-xs text-slate-500" x-text="pay.resident"></div>
+                                            </td>
+                                            <td class="px-6 py-4 text-slate-600 font-medium" x-text="pay.month"></td>
+                                            <td class="px-6 py-4 font-extrabold text-slate-800" x-text="formatCurrency(pay.amount)"></td>
+                                            <td class="px-6 py-4">
+                                                <span class="px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold border border-slate-200" x-text="pay.method"></span>
+                                            </td>
+                                            <td class="px-6 py-4 text-slate-500 text-xs" x-text="pay.date"></td>
+                                            <td class="px-6 py-4 text-right">
+                                                <button @click="printReceipt(pay)" class="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-lg transition border border-slate-200">
+                                                    <i class="fa-solid fa-print mr-1"></i> Recibo
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MODULE 4: COMMON AREAS RESERVATIONS -->
+                <div x-show="currentView === 'amenities'" class="space-y-6" x-cloak>
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-bold text-slate-800 text-lg">Catálogo de Espaços Comuns</h3>
+                        <button @click="openModal('booking')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl transition flex items-center space-x-2">
+                            <i class="fa-solid fa-calendar-plus"></i> <span>Nova Reserva</span>
+                        </button>
+                    </div>
+
+                    <!-- Amenity Cards Grid -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <template x-for="space in commonAreas" :key="space.id">
+                            <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-md transition">
+                                <div class="h-32 bg-slate-800 relative flex items-center justify-center text-slate-300">
+                                    <i :class="space.icon" class="text-4xl"></i>
+                                    <span class="absolute top-3 right-3 px-2.5 py-1 bg-white/90 backdrop-blur rounded-lg text-xs font-extrabold text-slate-800 shadow-sm" x-text="formatCurrency(space.fee)"></span>
+                                </div>
+                                <div class="p-4 flex-1 flex flex-col justify-between">
+                                    <div>
+                                        <h4 class="font-bold text-slate-800 text-base" x-text="space.name"></h4>
+                                        <p class="text-xs text-slate-500 mt-1" x-text="space.desc"></p>
+                                    </div>
+                                    <div class="mt-4 pt-3 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500">
+                                        <span><i class="fa-solid fa-users text-slate-400"></i> Cap: <strong x-text="space.capacity"></strong></span>
+                                        <button @click="selectSpaceForBooking(space.name)" class="text-indigo-600 font-bold hover:underline">Reservar</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
+                    <!-- Bookings Agenda -->
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+                        <h4 class="font-bold text-slate-800 text-base mb-4">Agenda de Reservas</h4>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[11px] font-bold">
+                                    <tr>
+                                        <th class="px-4 py-3" x-show="selectedCondoId === 'all'">Condomínio</th>
+                                        <th class="px-4 py-3">Espaço</th>
+                                        <th class="px-4 py-3">Unidade / Solicitante</th>
+                                        <th class="px-4 py-3">Data & Horário</th>
+                                        <th class="px-4 py-3">Estado</th>
+                                        <th class="px-4 py-3 text-right">Ação</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    <template x-for="book in scopedBookings" :key="book.id">
+                                        <tr class="hover:bg-slate-50">
+                                            <td class="px-4 py-3 font-semibold text-indigo-600 text-xs" x-show="selectedCondoId === 'all'" x-text="getCondoNameById(book.condoId)"></td>
+                                            <td class="px-4 py-3 font-semibold text-slate-800" x-text="book.space"></td>
+                                            <td class="px-4 py-3 text-slate-600" x-text="book.resident + ' (' + book.unit + ')'"></td>
+                                            <td class="px-4 py-3 text-xs text-slate-500 font-medium" x-text="book.date + ' • ' + book.timeSlot"></td>
+                                            <td class="px-4 py-3">
+                                                <span :class="book.status === 'Aprovado' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'"
+                                                      class="px-2.5 py-0.5 rounded-full text-xs font-semibold" x-text="book.status"></span>
+                                            </td>
+                                            <td class="px-4 py-3 text-right">
+                                                <button x-show="book.status === 'Pendente'" @click="approveBooking(book.id)" class="px-2.5 py-1 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 transition">Aprovar</button>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MODULE 5: TICKETS & MAINTENANCE -->
+                <div x-show="currentView === 'tickets'" class="space-y-6" x-cloak>
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-bold text-slate-800 text-lg">Registo de Ocorrências e Chamados</h3>
+                        <button @click="openModal('ticket')" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold text-sm rounded-xl transition flex items-center space-x-2">
+                            <i class="fa-solid fa-plus"></i> <span>Nova Ocorrência</span>
+                        </button>
+                    </div>
+
+                    <!-- Tickets Grid -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <template x-for="ticket in scopedTickets" :key="ticket.id">
+                            <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col justify-between space-y-4">
+                                <div>
+                                    <div class="flex justify-between items-start mb-2">
+                                        <span :class="getPriorityClass(ticket.priority)" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase" x-text="ticket.priority"></span>
+                                        <span class="text-xs text-slate-400" x-text="ticket.date"></span>
+                                    </div>
+                                    <span class="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider block mb-1" x-show="selectedCondoId === 'all'" x-text="getCondoNameById(ticket.condoId)"></span>
+                                    <h4 class="font-bold text-slate-800 text-base" x-text="ticket.title"></h4>
+                                    <p class="text-xs text-slate-600 mt-2 line-clamp-3 leading-relaxed" x-text="ticket.description"></p>
+                                </div>
+
+                                <div class="pt-4 border-t border-slate-100 flex items-center justify-between">
+                                    <span class="text-xs text-slate-500 font-semibold" x-text="'Unidade: ' + ticket.unit"></span>
+                                    
+                                    <select :value="ticket.status" @change="updateTicketStatus(ticket.id, $event.target.value)" 
+                                            class="text-xs font-bold rounded-lg px-2.5 py-1 border-0 bg-slate-100 focus:ring-2 focus:ring-indigo-500 text-slate-700 cursor-pointer">
+                                        <option value="Pendente">Pendente</option>
+                                        <option value="Em Andamento">Em Andamento</option>
+                                        <option value="Concluído">Concluído</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- MODULE 6: ACCESS CONTROL / PORTARIA -->
+                <div x-show="currentView === 'visitors'" class="space-y-6" x-cloak>
+                    <!-- Quick Check-in Form -->
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+                        <h3 class="font-bold text-slate-800 text-base mb-4">Registo de Entrada de Visitantes</h3>
+                        <form @submit.prevent="addVisitor()" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                            <input type="text" x-model="newVisitor.name" placeholder="Nome do Visitante" required class="px-3 py-2 bg-slate-100 text-sm rounded-xl border-0 focus:ring-2 focus:ring-indigo-500">
+                            <input type="text" x-model="newVisitor.document" placeholder="BI / Passaporte" required class="px-3 py-2 bg-slate-100 text-sm rounded-xl border-0 focus:ring-2 focus:ring-indigo-500">
+                            <input type="text" x-model="newVisitor.plate" placeholder="Matrícula (Opção)" class="px-3 py-2 bg-slate-100 text-sm rounded-xl border-0 focus:ring-2 focus:ring-indigo-500">
+                            <input type="text" x-model="newVisitor.unit" placeholder="Unidade Destino" required class="px-3 py-2 bg-slate-100 text-sm rounded-xl border-0 focus:ring-2 focus:ring-indigo-500">
+                            <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition">
+                                Registo Entrada
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Visitors Log Table -->
+                    <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                        <div class="p-4 border-b border-slate-100">
+                            <h4 class="font-bold text-slate-800 text-sm">Registo de Acessos Recentes</h4>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-slate-50 text-slate-500 uppercase text-[11px] font-bold">
+                                    <tr>
+                                        <th class="px-6 py-3" x-show="selectedCondoId === 'all'">Condomínio</th>
+                                        <th class="px-6 py-3">Visitante</th>
+                                        <th class="px-6 py-3">Documento</th>
+                                        <th class="px-6 py-3">Matrícula</th>
+                                        <th class="px-6 py-3">Destino</th>
+                                        <th class="px-6 py-3">Hora Entrada</th>
+                                        <th class="px-6 py-3">Hora Saída</th>
+                                        <th class="px-6 py-3 text-right">Ação</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    <template x-for="vis in scopedVisitors" :key="vis.id">
+                                        <tr class="hover:bg-slate-50">
+                                            <td class="px-6 py-3 font-semibold text-indigo-600 text-xs" x-show="selectedCondoId === 'all'" x-text="getCondoNameById(vis.condoId)"></td>
+                                            <td class="px-6 py-3 font-semibold text-slate-800" x-text="vis.name"></td>
+                                            <td class="px-6 py-3 text-slate-600" x-text="vis.document"></td>
+                                            <td class="px-6 py-3 text-slate-600 font-mono text-xs" x-text="vis.plate || '-'"></td>
+                                            <td class="px-6 py-3 font-bold text-indigo-600" x-text="vis.unit"></td>
+                                            <td class="px-6 py-3 text-xs text-slate-500" x-text="vis.checkIn"></td>
+                                            <td class="px-6 py-3 text-xs text-slate-500" x-text="vis.checkOut || 'No Local'"></td>
+                                            <td class="px-6 py-3 text-right">
+                                                <button x-show="!vis.checkOut" @click="checkOutVisitor(vis.id)" class="px-3 py-1 bg-slate-800 text-white text-xs font-semibold rounded-lg hover:bg-slate-900 transition">
+                                                    Dar Saída
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MODULE 7: ANNOUNCEMENTS / BULLETIN BOARD -->
+                <div x-show="currentView === 'notices'" class="space-y-6" x-cloak>
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-bold text-slate-800 text-lg">Mural da Comunidade</h3>
+                        <button @click="openModal('notice')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl transition flex items-center space-x-2">
+                            <i class="fa-solid fa-bullhorn"></i> <span>Novo Comunicado</span>
+                        </button>
+                    </div>
+
+                    <!-- Notice List -->
+                    <div class="space-y-4">
+                        <template x-for="notice in scopedNotices" :key="notice.id">
+                            <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm relative">
+                                <div class="flex justify-between items-start mb-2">
+                                    <div>
+                                        <span class="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider block" x-show="selectedCondoId === 'all'" x-text="getCondoNameById(notice.condoId)"></span>
+                                        <h4 class="text-lg font-bold text-slate-800" x-text="notice.title"></h4>
+                                    </div>
+                                    <span class="text-xs text-slate-400 font-medium" x-text="notice.date"></span>
+                                </div>
+                                <p class="text-sm text-slate-600 leading-relaxed" x-text="notice.content"></p>
+                                <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                                    <span>Publicado por: <strong class="text-slate-700" x-text="notice.author"></strong></span>
+                                    <button @click="deleteNotice(notice.id)" class="text-rose-500 hover:underline font-semibold">Eliminar</button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+            </main>
+        </div>
+    </div>
+
+    <!-- FORM MODALS CONTAINER -->
+
+    <!-- New Condominium Modal -->
+    <div x-show="modals.condo" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <h3 class="font-bold text-lg text-slate-800">Cadastrar Novo Condomínio</h3>
+            <form @submit.prevent="saveCondo()" class="space-y-3">
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase">Nome do Condomínio</label>
+                    <input type="text" x-model="forms.condo.name" placeholder="Ex: Condomínio Mar da Polana" required class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase">Endereço / Localização</label>
+                    <input type="text" x-model="forms.condo.address" placeholder="Ex: Av. Marginal, Maputo" required class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-xs font-bold text-slate-500 uppercase">Nº de Frações</label>
+                        <input type="number" x-model="forms.condo.units" placeholder="Ex: 24" required class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-slate-500 uppercase">Taxa Padrão (MT)</label>
+                        <input type="number" x-model="forms.condo.fee" placeholder="Ex: 5000" required class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                </div>
+                <div class="flex justify-end space-x-2 pt-4">
+                    <button type="button" @click="closeModals()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700">Criar Condomínio</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Resident Modal -->
+    <div x-show="modals.resident" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <h3 class="font-bold text-lg text-slate-800">Cadastrar Novo Morador</h3>
+            <form @submit.prevent="saveResident()" class="space-y-3">
+                <div x-show="selectedCondoId === 'all'">
+                    <label class="text-xs font-bold text-slate-500 uppercase">Condomínio Destino</label>
+                    <select x-model="forms.resident.condoId" class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500">
+                        <template x-for="c in condominiums" :key="c.id">
+                            <option :value="c.id" x-text="c.name"></option>
+                        </template>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase">Unidade / Fração</label>
+                    <input type="text" x-model="forms.resident.unit" placeholder="Ex: Bloco B - Ap 204" required class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase">Nome Completo</label>
+                    <input type="text" x-model="forms.resident.name" placeholder="Nome do Morador" required class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase">Contacto Telefónico</label>
+                    <input type="text" x-model="forms.resident.phone" placeholder="+258 84/85..." required class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase">Tipo de Vínculo</label>
+                    <select x-model="forms.resident.type" class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500">
+                        <option value="Proprietário">Proprietário</option>
+                        <option value="Inquilino">Inquilino</option>
+                    </select>
+                </div>
+                <div class="flex justify-end space-x-2 pt-4">
+                    <button type="button" @click="closeModals()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Payment Modal -->
+    <div x-show="modals.payment" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <h3 class="font-bold text-lg text-slate-800">Registar Pagamento de Taxa</h3>
+            <form @submit.prevent="savePayment()" class="space-y-3">
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase">Unidade Habitacional</label>
+                    <select x-model="forms.payment.unit" class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500" required>
+                        <option value="">Selecione a Unidade</option>
+                        <template x-for="res in scopedResidents" :key="res.id">
+                            <option :value="res.unit" x-text="res.unit + ' - ' + res.name"></option>
+                        </template>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase">Mês Referência</label>
+                    <input type="text" x-model="forms.payment.month" placeholder="Ex: Outubro 2026" required class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase">Valor Pago (MT)</label>
+                    <input type="number" x-model="forms.payment.amount" required class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase">Método de Pagamento</label>
+                    <select x-model="forms.payment.method" class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500">
+                        <option value="M-Pesa">M-Pesa</option>
+                        <option value="e-Mola">e-Mola</option>
+                        <option value="Transferência Bancária">Transferência Bancária</option>
+                        <option value="Numerário / Cash">Numerário / Cash</option>
+                    </select>
+                </div>
+                <div class="flex justify-end space-x-2 pt-4">
+                    <button type="button" @click="closeModals()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700">Registar Pagamento</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Booking Modal -->
+    <div x-show="modals.booking" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <h3 class="font-bold text-lg text-slate-800">Solicitar Reserva de Espaço</h3>
+            <form @submit.prevent="saveBooking()" class="space-y-3">
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase">Espaço Pretendido</label>
+                    <select x-model="forms.booking.space" class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500" required>
+                        <template x-for="space in commonAreas" :key="space.id">
+                            <option :value="space.name" x-text="space.name"></option>
+                        </template>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase">Unidade Solicitante</label>
+                    <input type="text" x-model="forms.booking.unit" placeholder="Ex: Bloco A - Ap 102" required class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase">Data da Reserva</label>
+                    <input type="date" x-model="forms.booking.date" required class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase">Horário / Turno</label>
+                    <input type="text" x-model="forms.booking.timeSlot" placeholder="Ex: 14:00 - 20:00" required class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div class="flex justify-end space-x-2 pt-4">
+                    <button type="button" @click="closeModals()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700">Submeter Reserva</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Ticket Modal -->
+    <div x-show="modals.ticket" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <h3 class="font-bold text-lg text-slate-800">Abrir Chamado / Ocorrência</h3>
+            <form @submit.prevent="saveTicket()" class="space-y-3">
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase">Título do Problema</label>
+                    <input type="text" x-model="forms.ticket.title" placeholder="Ex: Lâmpada Fundida Corredor" required class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase">Unidade Reclamante</label>
+                    <input type="text" x-model="forms.ticket.unit" placeholder="Ex: Bloco B - Ap 201" required class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase">Nível de Prioridade</label>
+                    <select x-model="forms.ticket.priority" class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500">
+                        <option value="Baixa">Baixa</option>
+                        <option value="Média">Média</option>
+                        <option value="Alta">Alta</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase">Descrição Detalhada</label>
+                    <textarea x-model="forms.ticket.description" rows="3" required class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500"></textarea>
+                </div>
+                <div class="flex justify-end space-x-2 pt-4">
+                    <button type="button" @click="closeModals()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 bg-amber-600 text-white rounded-xl text-xs font-bold hover:bg-amber-700">Submeter Chamado</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Notice Modal -->
+    <div x-show="modals.notice" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <h3 class="font-bold text-lg text-slate-800">Publicar Novo Comunicado</h3>
+            <form @submit.prevent="saveNotice()" class="space-y-3">
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase">Título do Aviso</label>
+                    <input type="text" x-model="forms.notice.title" placeholder="Ex: Manutenção na Rede Elétrica" required class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase">Conteúdo do Aviso</label>
+                    <textarea x-model="forms.notice.content" rows="4" required class="w-full px-3 py-2 bg-slate-100 rounded-xl text-sm mt-1 border-0 focus:ring-2 focus:ring-indigo-500"></textarea>
+                </div>
+                <div class="flex justify-end space-x-2 pt-4">
+                    <button type="button" @click="closeModals()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700">Publicar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- PRINTABLE RECEIPT TEMPLATE (Hidden from web layout) -->
+    <div id="receiptPrintArea" class="hidden print-only p-8 bg-white font-sans text-slate-900 max-w-lg mx-auto">
+        <div class="text-center border-b pb-4 mb-4">
+            <h1 class="text-2xl font-bold uppercase tracking-wide">CondoMaster</h1>
+            <p class="text-xs text-slate-500">Comprovativo de Pagamento de Taxa de Condomínio</p>
+        </div>
+        <template x-if="activeReceipt">
+            <div class="space-y-3 text-sm">
+                <div class="flex justify-between border-b pb-2">
+                    <span class="text-slate-500">Condomínio:</span>
+                    <strong x-text="getCondoNameById(activeReceipt.condoId)"></strong>
+                </div>
+                <div class="flex justify-between border-b pb-2">
+                    <span class="text-slate-500">Unidade / Morador:</span>
+                    <strong x-text="activeReceipt.unit + ' - ' + activeReceipt.resident"></strong>
+                </div>
+                <div class="flex justify-between border-b pb-2">
+                    <span class="text-slate-500">Mês Referência:</span>
+                    <span x-text="activeReceipt.month"></span>
+                </div>
+                <div class="flex justify-between border-b pb-2">
+                    <span class="text-slate-500">Método de Pagamento:</span>
+                    <span x-text="activeReceipt.method"></span>
+                </div>
+                <div class="flex justify-between border-b pb-2">
+                    <span class="text-slate-500">Data de Emissão:</span>
+                    <span x-text="activeReceipt.date"></span>
+                </div>
+                <div class="flex justify-between pt-2 text-base font-bold">
+                    <span>Valor Liquidado:</span>
+                    <span class="text-emerald-600" x-text="formatCurrency(activeReceipt.amount)"></span>
+                </div>
+            </div>
+        </template>
+        <div class="mt-12 text-center text-[10px] text-slate-400 border-t pt-4">
+            Processado Eletronicamente pelo Sistema CondoMaster • Documento Válido como Recibo
+        </div>
+    </div>
+
+    <!-- CORE REACTIVE STATE ENGINE (ALPINE.JS) -->
+    <script>
+        function condoApp() {
+            return {
+                sidebarOpen: false,
+                currentView: 'dashboard',
+                globalSearch: '',
+                selectedCondoId: 'all', // 'all' or numeric ID
+
+                toast: { show: false, message: '', type: 'success' },
+                activeReceipt: null,
+
+                navItems: [
+                    { id: 'dashboard', label: 'Dashboard', icon: 'fa-solid fa-chart-pie' },
+                    { id: 'condos', label: 'Condomínios', icon: 'fa-solid fa-city' },
+                    { id: 'residents', label: 'Residentes', icon: 'fa-solid fa-users-gear' },
+                    { id: 'finance', label: 'Financeiro', icon: 'fa-solid fa-file-invoice-dollar' },
+                    { id: 'amenities', label: 'Reservas', icon: 'fa-regular fa-calendar-check' },
+                    { id: 'tickets', label: 'Ocorrências', icon: 'fa-solid fa-triangle-exclamation', badge: true },
+                    { id: 'visitors', label: 'Portaria & Acessos', icon: 'fa-solid fa-shield-halved' },
+                    { id: 'notices', label: 'Comunicados', icon: 'fa-solid fa-bullhorn' },
+                ],
+
+                condominiums: [],
+                residents: [],
+                payments: [],
+                bookings: [],
+                tickets: [],
+                visitors: [],
+                notices: [],
+                
+                commonAreas: [
+                    { id: 1, name: 'Salão de Festas', capacity: 80, fee: 3500, icon: 'fa-solid fa-champagne-glasses', desc: 'Espaço climatizado com cozinha de apoio completa' },
+                    { id: 2, name: 'Churrasqueira Gourmet', capacity: 25, fee: 1500, icon: 'fa-solid fa-fire-burner', desc: 'Grelhador a carvão com área coberta e bancadas' },
+                    { id: 3, name: 'Piscina Principal', capacity: 40, fee: 0, icon: 'fa-solid fa-person-swimming', desc: 'Livre acesso mediante marcação de horário' },
+                    { id: 4, name: 'Campo Multiusos', capacity: 20, fee: 1000, icon: 'fa-solid fa-futbol', desc: 'Piso de alta aderência e iluminação noturna' },
+                ],
+
+                recentActivities: [
+                    { id: 1, title: 'Pagamento Confirmado', desc: 'Bloco A - Ap 101 pagou via M-Pesa', time: 'Há 10 min', icon: 'fa-solid fa-check text-emerald-600', typeColor: 'bg-emerald-100' },
+                    { id: 2, title: 'Visitante Registado', desc: 'Portaria deu entrada a Carlos Sitoe', time: 'Há 35 min', icon: 'fa-solid fa-user-check text-blue-600', typeColor: 'bg-blue-100' },
+                    { id: 3, title: 'Ocorrência Registada', desc: 'Avaria técnica no elevador Bloco B', time: 'Há 1 hora', icon: 'fa-solid fa-wrench text-amber-600', typeColor: 'bg-amber-100' },
+                ],
+
+                residentSearch: '',
+                residentFilterStatus: 'all',
+
+                modals: { condo: false, resident: false, payment: false, booking: false, ticket: false, notice: false },
+                forms: {
+                    condo: { name: '', address: '', units: 20, fee: 5000 },
+                    resident: { condoId: 1, name: '', unit: '', phone: '', type: 'Proprietário' },
+                    payment: { unit: '', month: 'Outubro 2026', amount: 5000, method: 'M-Pesa' },
+                    booking: { space: 'Salão de Festas', unit: '', date: '', timeSlot: '12:00 - 18:00' },
+                    ticket: { title: '', unit: '', priority: 'Média', description: '' },
+                    notice: { title: '', content: '' },
+                },
+                newVisitor: { name: '', document: '', plate: '', unit: '' },
+
+                initApp() {
+                    this.loadInitialData();
+                    this.$nextTick(() => {
+                        this.renderChart();
+                    });
+                },
+
+                switchCondo(id) {
+                    this.selectedCondoId = id === 'all' ? 'all' : Number(id);
+                    if (id !== 'all') {
+                        this.forms.resident.condoId = Number(id);
+                    }
+                    this.showToast(id === 'all' ? 'Modo Visão Global ativado' : `Condomínio selecionado: ${this.getActiveCondoName()}`, 'info');
+                },
+
+                switchView(viewId) {
+                    this.currentView = viewId;
+                    if (window.innerWidth < 768) {
+                        this.sidebarOpen = false;
+                    }
+                },
+
+                showToast(msg, type = 'success') {
+                    this.toast.message = msg;
+                    this.toast.type = type;
+                    this.toast.show = true;
+                    setTimeout(() => { this.toast.show = false; }, 3000);
+                },
+
+                getViewTitle() {
+                    const item = this.navItems.find(i => i.id === this.currentView);
+                    return item ? item.label : 'Dashboard';
+                },
+
+                getActiveCondoName() {
+                    if (this.selectedCondoId === 'all') return 'Todos os Condomínios';
+                    const c = this.condominiums.find(x => x.id === Number(this.selectedCondoId));
+                    return c ? c.name : 'Condomínio Selecionado';
+                },
+
+                getCondoNameById(id) {
+                    const c = this.condominiums.find(x => x.id === Number(id));
+                    return c ? c.name : 'Condomínio';
+                },
+
+                getCondoResidentsCount(condoId) {
+                    return this.residents.filter(r => Number(r.condoId) === Number(condoId)).length;
+                },
+
+                getActiveCondoFee() {
+                    if (this.selectedCondoId === 'all') return 5000;
+                    const c = this.condominiums.find(x => x.id === Number(this.selectedCondoId));
+                    return c ? c.fee : 5000;
+                },
+
+                getBadgeCount(id) {
+                    if (id === 'tickets') return this.getOpenTicketsCount();
+                    return 0;
+                },
+
+                formatCurrency(val) {
+                    return new Intl.NumberFormat('pt-MZ', { style: 'currency', currency: 'MZN' }).format(val || 0).replace('MZN', 'MT');
+                },
+
+                // Scoped Data Computed Properties
+                get scopedResidents() {
+                    if (this.selectedCondoId === 'all') return this.residents;
+                    return this.residents.filter(r => Number(r.condoId) === Number(this.selectedCondoId));
+                },
+
+                get filteredResidents() {
+                    return this.scopedResidents.filter(r => {
+                        const search = (this.residentSearch || this.globalSearch).toLowerCase();
+                        const matchesSearch = r.name.toLowerCase().includes(search) || r.unit.toLowerCase().includes(search);
+                        const matchesFilter = this.residentFilterStatus === 'all' || r.paymentStatus === this.residentFilterStatus;
+                        return matchesSearch && matchesFilter;
+                    });
+                },
+
+                get scopedPayments() {
+                    if (this.selectedCondoId === 'all') return this.payments;
+                    return this.payments.filter(p => Number(p.condoId) === Number(this.selectedCondoId));
+                },
+
+                get scopedBookings() {
+                    if (this.selectedCondoId === 'all') return this.bookings;
+                    return this.bookings.filter(b => Number(b.condoId) === Number(this.selectedCondoId));
+                },
+
+                get scopedTickets() {
+                    if (this.selectedCondoId === 'all') return this.tickets;
+                    return this.tickets.filter(t => Number(t.condoId) === Number(this.selectedCondoId));
+                },
+
+                get scopedVisitors() {
+                    if (this.selectedCondoId === 'all') return this.visitors;
+                    return this.visitors.filter(v => Number(v.condoId) === Number(this.selectedCondoId));
+                },
+
+                get scopedNotices() {
+                    if (this.selectedCondoId === 'all') return this.notices;
+                    return this.notices.filter(n => Number(n.condoId) === Number(this.selectedCondoId));
+                },
+
+                calculateMonthlyRevenue() {
+                    return this.scopedPayments.reduce((acc, p) => acc + Number(p.amount), 0);
+                },
+
+                getOpenTicketsCount() {
+                    return this.scopedTickets.filter(t => t.status !== 'Concluído').length;
+                },
+
+                getActiveBookingsCount() {
+                    return this.scopedBookings.filter(b => b.status === 'Aprovado').length;
+                },
+
+                calculateTotalPaid() {
+                    return this.scopedPayments.filter(p => p.status === 'Pago').reduce((acc, p) => acc + Number(p.amount), 0);
+                },
+
+                calculateTotalPending() {
+                    const fee = this.getActiveCondoFee();
+                    return this.scopedResidents.filter(r => r.paymentStatus === 'Em Atraso').length * fee;
+                },
+
+                getPriorityClass(priority) {
+                    if (priority === 'Alta') return 'bg-rose-100 text-rose-800 border border-rose-200';
+                    if (priority === 'Média') return 'bg-amber-100 text-amber-800 border border-amber-200';
+                    return 'bg-blue-100 text-blue-800 border border-blue-200';
+                },
+
+                openModal(name) { this.modals[name] = true; },
+                closeModals() {
+                    Object.keys(this.modals).forEach(k => this.modals[k] = false);
+                },
+
+                selectSpaceForBooking(spaceName) {
+                    this.forms.booking.space = spaceName;
+                    this.openModal('booking');
+                },
+
+                // User Actions & CRUD
+                saveCondo() {
+                    const newC = {
+                        id: Date.now(),
+                        name: this.forms.condo.name,
+                        address: this.forms.condo.address,
+                        units: Number(this.forms.condo.units),
+                        fee: Number(this.forms.condo.fee)
+                    };
+                    this.condominiums.push(newC);
+                    this.selectedCondoId = newC.id;
+                    this.saveData();
+                    this.closeModals();
+                    this.showToast('Novo condomínio registado!');
+                    this.forms.condo = { name: '', address: '', units: 20, fee: 5000 };
+                },
+
+                saveResident() {
+                    const condoId = this.selectedCondoId === 'all' ? Number(this.forms.resident.condoId) : Number(this.selectedCondoId);
+                    const newRes = {
+                        id: Date.now(),
+                        condoId: condoId,
+                        name: this.forms.resident.name,
+                        unit: this.forms.resident.unit,
+                        phone: this.forms.resident.phone,
+                        email: this.forms.resident.name.toLowerCase().replace(/\s+/g, '.') + '@email.mz',
+                        type: this.forms.resident.type,
+                        paymentStatus: 'Em Dia'
+                    };
+                    this.residents.unshift(newRes);
+                    this.saveData();
+                    this.closeModals();
+                    this.showToast('Morador registado com sucesso!');
+                    this.forms.resident.name = '';
+                    this.forms.resident.unit = '';
+                    this.forms.resident.phone = '';
+                },
+
+                deleteResident(id) {
+                    this.residents = this.residents.filter(r => r.id !== id);
+                    this.saveData();
+                    this.showToast('Registo removido', 'error');
+                },
+
+                savePayment() {
+                    const residentObj = this.scopedResidents.find(r => r.unit === this.forms.payment.unit);
+                    const targetCondoId = residentObj ? Number(residentObj.condoId) : (this.selectedCondoId === 'all' ? 1 : Number(this.selectedCondoId));
+
+                    const newPay = {
+                        id: Date.now(),
+                        condoId: targetCondoId,
+                        unit: this.forms.payment.unit,
+                        resident: residentObj ? residentObj.name : 'Morador',
+                        month: this.forms.payment.month,
+                        amount: this.forms.payment.amount,
+                        method: this.forms.payment.method,
+                        date: new Date().toLocaleDateString('pt-PT'),
+                        status: 'Pago'
+                    };
+                    this.payments.unshift(newPay);
+
+                    if (residentObj) residentObj.paymentStatus = 'Em Dia';
+
+                    this.saveData();
+                    this.closeModals();
+                    this.showToast('Pagamento registado!');
+                },
+
+                printReceipt(payment) {
+                    this.activeReceipt = payment;
+                    this.$nextTick(() => {
+                        window.print();
+                    });
+                },
+
+                saveBooking() {
+                    const targetCondoId = this.selectedCondoId === 'all' ? 1 : Number(this.selectedCondoId);
+                    const residentObj = this.scopedResidents.find(r => r.unit === this.forms.booking.unit);
+                    const newBook = {
+                        id: Date.now(),
+                        condoId: targetCondoId,
+                        space: this.forms.booking.space,
+                        unit: this.forms.booking.unit,
+                        resident: residentObj ? residentObj.name : 'Solicitante',
+                        date: this.forms.booking.date,
+                        timeSlot: this.forms.booking.timeSlot,
+                        status: 'Pendente'
+                    };
+                    this.bookings.unshift(newBook);
+                    this.saveData();
+                    this.closeModals();
+                    this.showToast('Solicitação de reserva efetuada!');
+                },
+
+                approveBooking(id) {
+                    const b = this.bookings.find(x => x.id === id);
+                    if (b) b.status = 'Aprovado';
+                    this.saveData();
+                    this.showToast('Reserva confirmada!');
+                },
+
+                saveTicket() {
+                    const targetCondoId = this.selectedCondoId === 'all' ? 1 : Number(this.selectedCondoId);
+                    const newT = {
+                        id: Date.now(),
+                        condoId: targetCondoId,
+                        title: this.forms.ticket.title,
+                        unit: this.forms.ticket.unit,
+                        priority: this.forms.ticket.priority,
+                        description: this.forms.ticket.description,
+                        date: new Date().toLocaleDateString('pt-PT'),
+                        status: 'Pendente'
+                    };
+                    this.tickets.unshift(newT);
+                    this.saveData();
+                    this.closeModals();
+                    this.showToast('Ocorrência registada!');
+                },
+
+                updateTicketStatus(id, newStatus) {
+                    const t = this.tickets.find(x => x.id === id);
+                    if (t) t.status = newStatus;
+                    this.saveData();
+                    this.showToast('Estado da ocorrência atualizado');
+                },
+
+                addVisitor() {
+                    const targetCondoId = this.selectedCondoId === 'all' ? 1 : Number(this.selectedCondoId);
+                    const v = {
+                        id: Date.now(),
+                        condoId: targetCondoId,
+                        name: this.newVisitor.name,
+                        document: this.newVisitor.document,
+                        plate: this.newVisitor.plate,
+                        unit: this.newVisitor.unit,
+                        checkIn: new Date().toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }),
+                        checkOut: null
+                    };
+                    this.visitors.unshift(v);
+                    this.saveData();
+                    this.showToast('Entrada de visitante autorizada!');
+                    this.newVisitor = { name: '', document: '', plate: '', unit: '' };
+                },
+
+                checkOutVisitor(id) {
+                    const v = this.visitors.find(x => x.id === id);
+                    if (v) v.checkOut = new Date().toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+                    this.saveData();
+                    this.showToast('Saída registada com sucesso');
+                },
+
+                saveNotice() {
+                    const targetCondoId = this.selectedCondoId === 'all' ? 1 : Number(this.selectedCondoId);
+                    const n = {
+                        id: Date.now(),
+                        condoId: targetCondoId,
+                        title: this.forms.notice.title,
+                        content: this.forms.notice.content,
+                        author: 'Administração',
+                        date: new Date().toLocaleDateString('pt-PT')
+                    };
+                    this.notices.unshift(n);
+                    this.saveData();
+                    this.closeModals();
+                    this.showToast('Comunicado publicado!');
+                },
+
+                deleteNotice(id) {
+                    this.notices = this.notices.filter(n => n.id !== id);
+                    this.saveData();
+                    this.showToast('Comunicado removido', 'error');
+                },
+
+                // Storage and Data Sync
+                saveData() {
+                    localStorage.setItem('condomaster_condos', JSON.stringify(this.condominiums));
+                    localStorage.setItem('condomaster_residents', JSON.stringify(this.residents));
+                    localStorage.setItem('condomaster_payments', JSON.stringify(this.payments));
+                    localStorage.setItem('condomaster_bookings', JSON.stringify(this.bookings));
+                    localStorage.setItem('condomaster_tickets', JSON.stringify(this.tickets));
+                    localStorage.setItem('condomaster_visitors', JSON.stringify(this.visitors));
+                    localStorage.setItem('condomaster_notices', JSON.stringify(this.notices));
+                },
+
+                loadInitialData() {
+                    const storedCondos = localStorage.getItem('condomaster_condos');
+                    if (storedCondos) {
+                        this.condominiums = JSON.parse(storedCondos);
+                        this.residents = JSON.parse(localStorage.getItem('condomaster_residents') || '[]');
+                        this.payments = JSON.parse(localStorage.getItem('condomaster_payments') || '[]');
+                        this.bookings = JSON.parse(localStorage.getItem('condomaster_bookings') || '[]');
+                        this.tickets = JSON.parse(localStorage.getItem('condomaster_tickets') || '[]');
+                        this.visitors = JSON.parse(localStorage.getItem('condomaster_visitors') || '[]');
+                        this.notices = JSON.parse(localStorage.getItem('condomaster_notices') || '[]');
+                    } else {
+                        // Seed Mock Multi-Condo Dataset
+                        this.condominiums = [
+                            { id: 1, name: 'Condomínio Sol Nascente', address: 'Av. Julius Nyerere, Polana, Maputo', units: 16, fee: 5000 },
+                            { id: 2, name: 'Condomínio Mar da Polana', address: 'Av. Marginal, Maputo', units: 24, fee: 7500 },
+                            { id: 3, name: 'Condomínio Zimpeto Village', address: 'Bairro do Zimpeto, Maputo', units: 30, fee: 3500 }
+                        ];
+
+                        this.residents = [
+                            { id: 1, condoId: 1, unit: 'Bloco A - Ap 101', name: 'Anabela Machava', phone: '+258 84 123 4567', email: 'anabela.m@gmail.com', type: 'Proprietário', paymentStatus: 'Em Dia' },
+                            { id: 2, condoId: 1, unit: 'Bloco A - Ap 102', name: 'Celso Cossa', phone: '+258 85 987 6543', email: 'celso.cossa@outlook.com', type: 'Inquilino', paymentStatus: 'Em Dia' },
+                            { id: 3, condoId: 1, unit: 'Bloco B - Ap 201', name: 'Nuro Mabote', phone: '+258 82 456 7890', email: 'n.mabote@corporate.mz', type: 'Proprietário', paymentStatus: 'Em Atraso' },
+                            { id: 4, condoId: 2, unit: 'Torre 1 - Ap 502', name: 'Sérgio Mondlane', phone: '+258 84 999 1122', email: 'sergio.m@polana.mz', type: 'Proprietário', paymentStatus: 'Em Dia' },
+                            { id: 5, condoId: 3, unit: 'Casa 12', name: 'Inês Langa', phone: '+258 86 333 4455', email: 'ines.langa@zimpeto.mz', type: 'Inquilino', paymentStatus: 'Em Atraso' }
+                        ];
+
+                        this.payments = [
+                            { id: 101, condoId: 1, unit: 'Bloco A - Ap 101', resident: 'Anabela Machava', month: 'Outubro 2026', amount: 5000, method: 'M-Pesa', date: '01/10/2026', status: 'Pago' },
+                            { id: 102, condoId: 1, unit: 'Bloco A - Ap 102', resident: 'Celso Cossa', month: 'Outubro 2026', amount: 5000, method: 'Transferência Bancária', date: '03/10/2026', status: 'Pago' },
+                            { id: 103, condoId: 2, unit: 'Torre 1 - Ap 502', resident: 'Sérgio Mondlane', month: 'Outubro 2026', amount: 7500, method: 'e-Mola', date: '05/10/2026', status: 'Pago' }
+                        ];
+
+                        this.bookings = [
+                            { id: 201, condoId: 1, space: 'Salão de Festas', unit: 'Bloco A - Ap 101', resident: 'Anabela Machava', date: '2026-10-28', timeSlot: '14:00 - 20:00', status: 'Aprovado' },
+                            { id: 202, condoId: 2, space: 'Churrasqueira Gourmet', unit: 'Torre 1 - Ap 502', resident: 'Sérgio Mondlane', date: '2026-10-30', timeSlot: '11:00 - 16:00', status: 'Pendente' }
+                        ];
+
+                        this.tickets = [
+                            { id: 301, condoId: 1, title: 'Infiltração no Teto da Garagem', unit: 'Bloco B - Ap 201', priority: 'Alta', description: 'Gotejamento constante perto do estacionamento #12.', date: '20/10/2026', status: 'Em Andamento' },
+                            { id: 302, condoId: 3, title: 'Substituição de Lâmpada no Portão', unit: 'Casa 12', priority: 'Baixa', description: 'Sensor do portão de entrada sem iluminação noturna.', date: '22/10/2026', status: 'Pendente' }
+                        ];
+
+                        this.visitors = [
+                            { id: 401, condoId: 1, name: 'Eurico Langa', document: '110293847M', plate: 'AFG-321-MC', unit: 'Bloco A - Ap 102', checkIn: '14:20', checkOut: '16:45' },
+                            { id: 402, condoId: 2, name: 'Técnico de Internet', document: '098123746T', plate: 'AAB-112-MC', unit: 'Torre 1 - Ap 502', checkIn: '15:10', checkOut: null }
+                        ];
+
+                        this.notices = [
+                            { id: 501, condoId: 1, title: 'Limpeza do Reservatório de Água', content: 'Informa-se os condóminos que no próximo sábado haverá interrupção temporária no abastecimento para manutenção.', author: 'Administração', date: '22/10/2026' },
+                            { id: 502, condoId: 2, title: 'Manutenção Preventiva dos Elevadores', content: 'Os elevadores da Torre 1 estarão em revisão técnica durante o período da manhã.', author: 'Conselho de Administração', date: '18/10/2026' }
+                        ];
+
+                        this.saveData();
+                    }
+                },
+
+                exportData() {
+                    const data = {
+                        condos: this.condominiums,
+                        residents: this.residents,
+                        payments: this.payments,
+                        bookings: this.bookings,
+                        tickets: this.tickets,
+                        visitors: this.visitors,
+                        notices: this.notices
+                    };
+                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `condomaster_backup_${new Date().toISOString().slice(0,10)}.json`;
+                    a.click();
+                    this.showToast('Cópia de segurança exportada!');
+                },
+
+                importData(event) {
+                    const file = event.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            const data = JSON.parse(e.target.result);
+                            if (data.condos && data.residents) {
+                                this.condominiums = data.condos;
+                                this.residents = data.residents;
+                                this.payments = data.payments || [];
+                                this.bookings = data.bookings || [];
+                                this.tickets = data.tickets || [];
+                                this.visitors = data.visitors || [];
+                                this.notices = data.notices || [];
+                                this.saveData();
+                                this.showToast('Dados importados com sucesso!');
+                            }
+                        } catch (err) {
+                            this.showToast('Erro ao importar o ficheiro!', 'error');
+                        }
+                    };
+                    reader.readAsText(file);
+                },
+
+                resetData() {
+                    localStorage.clear();
+                    this.loadInitialData();
+                    this.showToast('Dados demonstrativos restaurados!');
+                },
+
+                renderChart() {
+                    const ctx = document.getElementById('financialChart');
+                    if (!ctx) return;
+
+                    new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: ['Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out'],
+                            datasets: [
+                                {
+                                    label: 'Arrecadação de Taxas (MT)',
+                                    data: [280000, 310000, 290000, 340000, 350000, 385000],
+                                    backgroundColor: '#10b981',
+                                    borderRadius: 6
+                                },
+                                {
+                                    label: 'Despesas Operacionais (MT)',
+                                    data: [180000, 210000, 190000, 220000, 200000, 230000],
+                                    backgroundColor: '#f43f5e',
+                                    borderRadius: 6
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'top', labels: { font: { family: 'Inter', size: 12 } } }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    ticks: {
+                                        callback: function(value) { return value.toLocaleString() + ' MT'; }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+        }
+    </script>
+</body>
+</html>
